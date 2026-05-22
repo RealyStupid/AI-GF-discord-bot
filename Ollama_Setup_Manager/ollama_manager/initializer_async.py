@@ -33,11 +33,16 @@ class OllamaInitializer_Async:
 
     def stop_ollama(self):
         """Stop Ollama cleanly."""
-        subprocess.run(
-            self._cmd("pkill", "ollama"),
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL
-        )
+        print(f"{Color.YELLOW}\nStopping ollama...{Color.RESET}")
+        try:
+            subprocess.run(
+                self._cmd("pkill", "ollama"),
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+            print(f"{Color.GREEN}Ollama Stopped{Color.RESET}")
+        except Exception as e:
+            print(f"{Color.RED}Error accured:", e, f"{Color.RESET}")
 
     def _cmd(self, *args):
         """Build command with prefix if inside Distrobox."""

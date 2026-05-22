@@ -4,6 +4,9 @@ from discord.ext import commands
 import os
 from Ollama_Setup_Manager.ollama_manager import init_async
 from bot.config.bot_config import INTENTS, BOT_TOKEN, APPLICATION_ID
+import atexit
+
+AI_INIT = init_async()
 
 class Client(commands.Bot):
     def __init__(self):
@@ -14,8 +17,7 @@ class Client(commands.Bot):
 
         await self.load_cogs("Cogs")
 
-        intent = init_async()
-        await intent.initialize()
+        await AI_INIT.initialize()
 
         print("[SETUP HOOK] finished")
 
@@ -35,5 +37,18 @@ class Client(commands.Bot):
         print(f"Bot ready: {self.user}")
 
 bot = Client()
+
+@bot.event
+async def on_message(message):
+    if message.author == bot.user:
+        return
+
+    if message.guild is None:
+        await message.channel.send("Wassup")
+
+def exit_function():
+    AI_INIT.stop_ollama()
+
+atexit.register(exit_function)
 
 bot.run(BOT_TOKEN)
