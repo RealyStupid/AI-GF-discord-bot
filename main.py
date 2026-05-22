@@ -9,6 +9,9 @@ import atexit
 
 AI_INIT = init_async()
 
+def load_inst() -> str:
+    return open("AI_manager/Inst.md", "r", encoding="utf-8").read()
+
 class Client(commands.Bot):
     def __init__(self):
         super().__init__(command_prefix="!", intents=INTENTS, application_id=APPLICATION_ID)
@@ -48,10 +51,14 @@ async def on_message(message):
         return
 
     if message.guild is None:
-        ai = AI_Client()
-        reply = await ai.request(message.content, stream=True)
-        await message.channel.send(reply)
+        async with message.channel.typing():
+            ai = AI_Client()
+            reply = await ai.request(message.content, instruction=load_inst(), stream=True)
+            await message.channel.send(reply)
 
+    if message.content.startswith("!"):
+        await bot.process_commands(message)
+        return
 
 def exit_function():
     AI_INIT.stop_ollama()
