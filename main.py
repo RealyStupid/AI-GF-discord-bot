@@ -3,7 +3,8 @@ import discord
 from discord.ext import commands
 import os
 from Ollama_Setup_Manager.ollama_manager import init_async
-from bot.config.bot_config import INTENTS, BOT_TOKEN, APPLICATION_ID
+from bot.bot_config import INTENTS, BOT_TOKEN, APPLICATION_ID
+from AI_manager.Client import AI_Client
 import atexit
 
 AI_INIT = init_async()
@@ -15,12 +16,13 @@ class Client(commands.Bot):
     async def setup_hook(self):
         print("[SETUP HOOK] started")
 
-        await self.load_cogs("Cogs")
+        # await self.load_cogs("Cogs")
 
         await AI_INIT.initialize()
 
         print("[SETUP HOOK] finished")
 
+    '''
     async def load_cogs(self, directory):
         base = directory.replace("\\", "/")
 
@@ -32,19 +34,24 @@ class Client(commands.Bot):
                     module = f"Cogs.{relative[:-3].replace('/', '.')}"
                     await self.load_extension(module)
                     print(f"[COG LOADER] Loaded cog {module}")
+    '''
 
     async def on_ready(self):
         print(f"Bot ready: {self.user}")
 
 bot = Client()
 
+# make this contact the AI and make prompts
 @bot.event
 async def on_message(message):
     if message.author == bot.user:
         return
 
     if message.guild is None:
-        await message.channel.send("Wassup")
+        ai = AI_Client()
+        reply = await ai.request(message.content, stream=True)
+        await message.channel.send(reply)
+
 
 def exit_function():
     AI_INIT.stop_ollama()
