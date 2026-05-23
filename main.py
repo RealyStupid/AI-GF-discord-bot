@@ -6,7 +6,9 @@ from Ollama_Setup_Manager.ollama_manager import init_async
 from bot.bot_config import INTENTS, BOT_TOKEN, APPLICATION_ID
 from AI_manager.Client import AI_Client
 import atexit
-from database import *
+from sesh_database import *
+from crypto_database import *
+from discord import app_commands
 
 AI_INIT = init_async()
 
@@ -33,6 +35,10 @@ class Client(commands.Bot):
         await AI_INIT.initialize()
 
         await initialize_db()
+
+        await initialize_crypto_db()
+
+        # await self.tree.sync()
 
         print("[SETUP HOOK] finished")
 
@@ -132,6 +138,19 @@ async def wipeAll(ctx, target: str):
 
     await wipe_all_memory(user_id)
     await ctx.send(f"🧹 All memory wiped for <@{user_id}>.")
+
+@bot.command()
+async def wipeMe(ctx):
+    await wipe_all_memory(ctx.author.id)
+    await ctx.send("🧹 Your memory has been wiped. Fresh start!")
+
+@bot.tree.command(
+    name="buy_premium",
+    description="Want to chat more with the bot? Create a crypto wallet and buy premium!"
+)
+async def buy_premium(interaction: discord.Interaction):
+   await interaction.response.send_message("Payment has not been setup yet")
+
 
 # some exit handling
 def exit_function():

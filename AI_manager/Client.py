@@ -1,7 +1,7 @@
 import aiohttp
 from typing import Optional, AsyncIterable, AsyncGenerator, Dict, Any
 import json
-from database import *
+from sesh_database import *
 
 async def parse_ollama_stream(content: AsyncIterable[bytes]) -> AsyncGenerator[Dict[str, Any], None]:
     """
@@ -153,8 +153,6 @@ class AI_Client:
     "personality": ["..."],
     "other": {{}}
     }}
-
-    If nothing should be saved, return: {{}}
 
     User message:
     {message}

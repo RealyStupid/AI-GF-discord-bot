@@ -15,6 +15,14 @@ async def initialize_db():
     """Creates a file for the database and populate it with tables"""
     await sessions.create_db()
 
+async def ensure_user_exists(user_id: int):
+    result = await sessions.run(
+        query("sessions").select("UserID").where("UserID = ?", user_id)
+    )
+
+    if not result:
+        await sessions.run(query("sessions").insert(UserID=user_id))
+
 async def update_sql(user_id: int):
     """We check if the user exists in our database, if not then we add them to it"""
     result = await sessions.run(query("sessions").select("UserID").where("UserID = ?", user_id))
@@ -56,10 +64,37 @@ async def can_interact(user_id: int) -> bool:
     return used < limit
 
 async def give_premium(user_id: int):
+    # 1) Check premium
+    result = await sessions.run(
+        query("sessions").select("IsPremium").where("UserID = ?", user_id)
+    )
+
+    if not result:
+        return
+    
     await sessions.run(query("sessions").update(IsPremium=True).where("UserID = ?", user_id))
 
 async def rm_premium(user_id: int):
+    # 1) Check premium
+    result = await sessions.run(
+        query("sessions").select("IsPremium").where("UserID = ?", user_id)
+    )
+
+    if not result:
+        return
+    
     await sessions.run(query("sessions").update(IsPremium=False).where("UserID = ?", user_id))
+
+async def has_premium(user_id: int) -> bool:
+    result = await sessions.run(
+        query("sessions").select("IsPremium").where("UserID = ?", user_id)
+    )
+
+    if not result:
+        return False
+
+    is_premium = bool(result[0][0])
+    return is_premium
 
 async def get_history(user_id: int) -> list:
     result = await sessions.run(
@@ -78,7 +113,6 @@ async def get_history(user_id: int) -> list:
         return json.loads(raw)
     except:
         return []
-
 
 async def save_history(user_id: int, history: list):
     encoded = json.dumps(history)
@@ -122,7 +156,6 @@ async def update_system_memory(user_id: int, key: str, value):
     memory = await get_system_memory(user_id)
     memory[key] = value
     await save_system_memory(user_id, memory)
-
 
 async def merge_memory(user_id: int, new_mem: dict):
     if not new_mem:
