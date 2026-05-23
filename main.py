@@ -54,6 +54,8 @@ async def on_message(message):
         async with message.channel.typing():
             ai = AI_Client()
             reply = await ai.request(message.content, instruction=load_inst(), stream=True)
+            if not reply.strip():
+                reply = "⚠️ AI returned an empty response."
             await message.channel.send(reply)
 
     if message.content.startswith("!"):
