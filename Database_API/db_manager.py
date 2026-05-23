@@ -1,5 +1,10 @@
-import sqlcipher3
+import aiosqlite
 from typing import Iterable
+
+# RAW QUERY
+class Raw:
+    def __init__(self, sql):
+        self.sql = sql
 
 #  COLUMN BUILDER
 class _ColumnBuilder:
@@ -199,8 +204,11 @@ class _QueryBuilder:
     def update(self, **kwargs):
         self._mode = "UPDATE"
         for col, val in kwargs.items():
-            self._update_pairs[col] = "?"
-            self._params.append(val)
+            if isinstance(val, Raw):
+                self._update_pairs[col] = val.sql  # raw SQL, no placeholder
+            else:
+                self._update_pairs[col] = "?"
+                self._params.append(val)
         return self
 
     # -----------------------------
@@ -272,8 +280,14 @@ class _QueryBuilder:
         return f"INSERT INTO {self.table} ({cols}) VALUES ({placeholders});"
 
     def _build_update(self):
-        assignments = ", ".join([f"{col} = ?" for col in self._update_pairs])
-        sql = f"UPDATE {self.table} SET {assignments}"
+        assignments = []
+        for col, val in self._update_pairs.items():
+            if val == "?":
+                assignments.append(f"{col} = ?")
+            else:
+                assignments.append(f"{col} = {val}")  # raw SQL
+
+        sql = f"UPDATE {self.table} SET {', '.join(assignments)}"
 
         if self._where:
             parts = []
@@ -296,7 +310,6 @@ class _QueryBuilder:
 
         return sql + ";"
 
-
 #  PUBLIC FACTORY FUNCTIONS
 def column(name: str) -> _ColumnBuilder:
     return _ColumnBuilder(name)
@@ -315,15 +328,9 @@ class db_manager:
         self.directory = directory
         self.db_name = db_name
 
-        # Store schema objects
         self.schema_objects = list(schema)
-
-        # Extract column names dynamically
         self.columns = [col.name for col in self.schema_objects]
-
         self.schema = ", ".join(col.to_sql() for col in self.schema_objects)
-
-        self._encryption_key = None
 
         print("Database Initialized with:")
         print(f"Name: {db_name}.db")
@@ -331,50 +338,30 @@ class db_manager:
         print(f"Table Name: {table_name}")
         print(f"Schema: {self.schema}")
 
-    # INTERNAL CONNECTION HANDLER
-    def _connect(self):
-        _os = __import__("os")
-        _os.makedirs(self.directory, exist_ok=True)
+    # ASYNC SQLITE CONNECTION
+    async def _connect(self):
+        import os
+        os.makedirs(self.directory, exist_ok=True)
 
         path = f"{self.directory}/{self.db_name}.db"
-        conn = sqlcipher3.connect(path)
-
-        if self._encryption_key is not None:
-            conn.execute(f"PRAGMA key = '{self._encryption_key}';")
-
-            try:
-                conn.execute("PRAGMA cipher_page_size = 4096;")
-                conn.execute("PRAGMA kdf_iter = 256000;")
-                conn.execute("PRAGMA cipher_hmac_algorithm = HMAC_SHA512;")
-                conn.execute("PRAGMA cipher_kdf_algorithm = PBKDF2_HMAC_SHA512;")
-                conn.execute("PRAGMA cipher_compatibility = 4;")
-            except Exception:
-                pass
-
-            try:
-                conn.execute("PRAGMA cipher_migrate;")
-            except Exception:
-                pass
-
-        return conn
+        return await aiosqlite.connect(path)
 
     # PRETTY PRINT ANY TABLE
-    def print_table(self, table_name: str):
-        conn = self._connect()
-        cur = conn.cursor()
+    async def print_table(self, table_name: str):
+        conn = await self._connect()
+        cur = await conn.execute(f"PRAGMA table_info({table_name});")
+        info = await cur.fetchall()
 
-        cur.execute(f"PRAGMA table_info({table_name});")
-        info = cur.fetchall()
         if not info:
             print(f"[ERROR] Table '{table_name}' does not exist.")
-            conn.close()
+            await conn.close()
             return
 
         columns = [col[1] for col in info]
 
-        cur.execute(f"SELECT * FROM {table_name};")
-        rows = cur.fetchall()
-        conn.close()
+        cur = await conn.execute(f"SELECT * FROM {table_name};")
+        rows = await cur.fetchall()
+        await conn.close()
 
         str_rows = [[str(item) for item in row] for row in rows]
 
@@ -402,58 +389,47 @@ class db_manager:
         print(sep)
         print(f"{len(rows)} row(s).\n")
 
-    # DATABASE CREATION
-    def create_db(self):
-        conn = self._connect()
-        cur = conn.cursor()
-        cur.execute(f"CREATE TABLE IF NOT EXISTS {self.table_name} ({self.schema})")
-        conn.commit()
-        conn.close()
+    # CREATE TABLE
+    async def create_db(self):
+        conn = await self._connect()
+        await conn.execute(f"CREATE TABLE IF NOT EXISTS {self.table_name} ({self.schema})")
+        await conn.commit()
+        await conn.close()
 
-    def create_table(self, table_name: str, schema: Iterable):
+    async def create_table(self, table_name: str, schema: Iterable):
         schema_sql = ", ".join(col.to_sql() for col in schema)
-        conn = self._connect()
-        cur = conn.cursor()
-        cur.execute(f"CREATE TABLE IF NOT EXISTS {table_name} ({schema_sql})")
-        conn.commit()
-        conn.close()
+        conn = await self._connect()
+        await conn.execute(f"CREATE TABLE IF NOT EXISTS {table_name} ({schema_sql})")
+        await conn.commit()
+        await conn.close()
 
     # PARAMETERIZED EXECUTION
-    def _execute_sql(self, sql: str, params=None):
-        conn = self._connect()
-        cur = conn.cursor()
-        cur.execute(sql, params or [])
-        conn.commit()
-        conn.close()
+    async def _execute_sql(self, sql: str, params=None):
+        conn = await self._connect()
+        await conn.execute(sql, params or [])
+        await conn.commit()
+        await conn.close()
 
-    def _fetchall_sql(self, sql: str, params=None):
-        conn = self._connect()
-        cur = conn.cursor()
-        cur.execute(sql, params or [])
-        rows = cur.fetchall()
-        conn.close()
+    async def _fetchall_sql(self, sql: str, params=None):
+        conn = await self._connect()
+        cur = await conn.execute(sql, params or [])
+        rows = await cur.fetchall()
+        await conn.close()
         return rows
 
-    def _fetchone_sql(self, sql: str, params=None):
-        conn = self._connect()
-        cur = conn.cursor()
-        cur.execute(sql, params or [])
-        row = cur.fetchone()
-        conn.close()
+    async def _fetchone_sql(self, sql: str, params=None):
+        conn = await self._connect()
+        cur = await conn.execute(sql, params or [])
+        row = await cur.fetchone()
+        await conn.close()
         return row
 
-    # ENABLE ENCRYPTION
-    def encrypt(self, key: str):
-        self._encryption_key = key
-        print("Full database encryption enabled (SQLCipher).")
-        return self
-
     # PUBLIC QUERY EXECUTION
-    def run(self, builder: _QueryBuilder):
+    async def run(self, builder):
         sql, params = builder.to_sql()
 
         if builder._mode == "SELECT":
-            return self._fetchall_sql(sql, params)
+            return await self._fetchall_sql(sql, params)
 
-        self._execute_sql(sql, params)
+        await self._execute_sql(sql, params)
         return None

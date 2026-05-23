@@ -6,11 +6,20 @@ from Ollama_Setup_Manager.ollama_manager import init_async
 from bot.bot_config import INTENTS, BOT_TOKEN, APPLICATION_ID
 from AI_manager.Client import AI_Client
 import atexit
+from database import *
 
 AI_INIT = init_async()
 
 def load_inst() -> str:
     return open("AI_manager/Inst.md", "r", encoding="utf-8").read()
+
+async def send_long_message(channel, text, limit=2000):
+    while len(text) > limit:
+        chunk = text[:limit]
+        text = text[limit:]
+        await channel.send(chunk)
+    if text:
+        await channel.send(text)
 
 class Client(commands.Bot):
     def __init__(self):
@@ -22,6 +31,8 @@ class Client(commands.Bot):
         # await self.load_cogs("Cogs")
 
         await AI_INIT.initialize()
+
+        await initialize_db()
 
         print("[SETUP HOOK] finished")
 
@@ -49,19 +60,80 @@ bot = Client()
 async def on_message(message):
     if message.author == bot.user:
         return
-
-    if message.guild is None:
-        async with message.channel.typing():
-            ai = AI_Client()
-            reply = await ai.request(message.content, instruction=load_inst(), stream=True)
-            if not reply.strip():
-                reply = "⚠️ AI returned an empty response."
-            await message.channel.send(reply)
-
+    
+    # Allow process of prefix commands
     if message.content.startswith("!"):
         await bot.process_commands(message)
         return
+    
+    # hitting the daily limit
+    if not await can_interact(message.author.id):
+        await message.channel.send("You hit your daily limit... \n Come back tomorow to chat more!")
+        return
 
+    # This is where the AI gets called
+    if message.guild is None:
+        async with message.channel.typing():
+            await update_sql(message.author.id)
+
+            ai = AI_Client()
+            memory = await ai.extract_memory(message.content)
+            await merge_memory(message.author.id, memory)
+
+            await add_to_history(message.author.id, message.author.name, message.content)
+
+            reply = await ai.request(
+                message.author.id,
+                message.content,
+                instruction=load_inst(),
+                stream=True
+            )
+
+            await add_to_history(message.author.id, "ai girlfriend", reply)
+
+            if not reply.strip():
+                reply = "⚠️ AI returned an empty response."
+
+            await send_long_message(message.channel, reply)
+
+@bot.command()
+@commands.is_owner()
+async def givePremium(ctx, target: discord.Member | None = None):
+    user_id = ctx.author.id if target is None else target.id
+    
+    await give_premium(user_id)
+    
+    recipient = ctx.author if target is None else target
+    
+    await ctx.send(f"Premium given to {recipient.mention}")
+
+@bot.command()
+@commands.is_owner()
+async def rmPremium(ctx, target: discord.Member | None = None):
+    user_id = ctx.author.id if target is None else target.id
+    
+    await rm_premium(user_id)
+    
+    recipient = ctx.author if target is None else target
+    
+    await ctx.send(f"Premium removed from {recipient.mention}")
+
+@bot.command()
+@commands.is_owner()
+async def wipeAll(ctx, target: str):
+    # Accepts: @mention, <@id>, <@!id>, raw ID, username text
+    cleaned = target.replace("<@", "").replace("<@!", "").replace(">", "")
+    
+    try:
+        user_id = int(cleaned)
+    except ValueError:
+        await ctx.send("❌ Invalid user ID or mention.")
+        return
+
+    await wipe_all_memory(user_id)
+    await ctx.send(f"🧹 All memory wiped for <@{user_id}>.")
+
+# some exit handling
 def exit_function():
     AI_INIT.stop_ollama()
 
