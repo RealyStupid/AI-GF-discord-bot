@@ -7,11 +7,11 @@ class AI_Client:
             self,
             model: str = "llama3",
             host: str = "http://localhost:11434/api/generate",
-            temperature: float = 0.6,      # natural variation, not chaotic
-            top_p: float = 0.85,           # keeps responses coherent
-            top_k: int = 30,               # small search space = faster
-            repeat_penalty: float = 1.25,  # avoids loops, keeps flow human
-            num_predict: int = 256,        # half the tokens = half the compute
+            temperature: float = 0.6,
+            top_p: float = 0.85,
+            top_k: int = 30,
+            repeat_penalty: float = 1.25,
+            num_predict: int = 256,
         ):
         self.model = model
         self.host = host
