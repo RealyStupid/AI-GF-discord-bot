@@ -7,7 +7,6 @@ from bot.bot_config import INTENTS, BOT_TOKEN, APPLICATION_ID
 from AI_manager.Client import AI_Client
 import atexit
 from sesh_database import *
-from crypto_database import *
 from discord import app_commands
 
 AI_INIT = init_async()

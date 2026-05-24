@@ -37,7 +37,7 @@ async def parse_ollama_stream(content: AsyncIterable[bytes]) -> AsyncGenerator[D
 class AI_Client:
     def __init__(
             self,
-            model: str = "qwen2.5:1.5b",
+            model: str = "llama2-uncensored",
             host: str = "http://localhost:11434/api/generate",
             temperature: float = 0.4,
             top_p: float = 0.9,
